@@ -1,0 +1,87 @@
+name: E2E Workflow for Connext
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+      - testnet-prod
+      - prod
+
+jobs:
+  build-and-test:
+    if: github.ref != 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+  build-and-push-cartographer-image:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/testnet-prod' || github.ref == 'refs/heads/prod'
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: 679752396206.dkr.ecr.us-east-1.amazonaws.com
+      IMAGE_TAG: ${{ github.ref_name }}-${{ github.sha }}
+      IMAGE_TAG_A: ${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+      REPOSITORY: nxtp-cartographer
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Build, tag, and push docker image to Amazon ECR Public
+        run: |
+          echo $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          echo $REGISTRY/$REPOSITORY:$IMAGE_TAG_A
+
+  build-and-push-lighthouse-image:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/testnet-prod' || github.ref == 'refs/heads/prod'
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: 679752396206.dkr.ecr.us-east-1.amazonaws.com
+      IMAGE_TAG: ${{ github.ref_name }}-${{ github.sha }}
+      REPOSITORY: nxtp-lighthouse
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Build, tag, and push docker image to Amazon ECR Public
+        run: |
+          echo $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          echo $REGISTRY/$REPOSITORY:$IMAGE_TAG_A
+
+  smoke-tests:
+    runs-on: ubuntu-latest
+    needs: [build-and-push-cartographer-image, build-and-push-lighthouse-image]
+    env:
+      CARTOGRAPHER_IMAGE: ghcr.io/connext/cartographer:${{ github.ref_name }}-${{ github.sha }}
+      LIGHTHOUSE_IMAGE: ghcr.io/connext/lighthouse:${{ github.ref_name }}-${{ github.sha }}
+    steps:
+      - name: run smoke tests
+        run: |
+          echo $CARTOGRAPHER_IMAGE
+          echo $LIGHTHOUSE_IMAGE
+
+  e2e-tests:
+    if: github.ref != 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    needs:
+      [
+        build-and-test,
+        build-and-push-cartographer-image,
+        build-and-push-lighthouse-image,
+      ]
+    env:
+      LIGHTHOUSE_IMAGE: ghcr.io/connext/lighthouse:${{ github.ref_name }}-${{ github.sha }}
+      TF_VAR_cartographer_image_tag: ${{ github.ref_name }}-${{ github.sha }}
+    steps:
+      - name: run smoke tests
+        run: |
+          echo $LIGHTHOUSE_IMAGE
+          echo $TF_VAR_cartographer_image_tag
